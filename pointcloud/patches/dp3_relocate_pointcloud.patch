@@ -1,0 +1,77 @@
+diff -ruN a/3D-Diffusion-Policy/diffusion_policy_3d/gym_util/mjpc_wrapper.py b/3D-Diffusion-Policy/diffusion_policy_3d/gym_util/mjpc_wrapper.py
+--- a/3D-Diffusion-Policy/diffusion_policy_3d/gym_util/mjpc_wrapper.py
++++ b/3D-Diffusion-Policy/diffusion_policy_3d/gym_util/mjpc_wrapper.py
+@@ -48,8 +48,25 @@
+         'scale': np.array([1, 1, 1]),
+         'offset': np.array([0, 0, 0.]),
+     },
+-    
+-    
++
++    # relocate (not in DP3): camera 'vil_camera' at 224 px. PointCloudGenerator applies camera 0's
++    # extrinsics; vil_camera has the same orientation as 'fixed', so `offset` (its position) puts the cloud
++    # in the world frame. min z -0.05 removes the ground plane and the background. The target is a
++    # translucent site that is not written to the depth buffer; the cloud is the union of a normal pass
++    # and a pass with the target opaque ('depth_opaque_sites'), so target, ball and fingers are all present.
++    'adroit_relocate': {
++        'min_bound': [-10, -10, -0.05],
++        'max_bound': [10, 10, 10],
++        'num_points': 512,
++        'point_sampling_method': 'fps',
++        'cam_names': ['vil_camera'],
++        'transform': None,
++        'scale': np.array([1, 1, 1]),
++        'offset': np.array([0, -1.2, 1.2]),
++        'img_size': 224,
++        'depth_opaque_sites': ['target'],
++    },
++
+ }
+ 
+ def point_cloud_sampling(point_cloud:np.ndarray, num_points:int, method:str='fps'):
+@@ -132,22 +149,40 @@
+         assert self.point_sampling_method in ['uniform', 'fps'], \
+             f"point_sampling_method should be one of ['uniform', 'fps'], but got {self.point_sampling_method}"
+         
+-        # point cloud generator
++        # point cloud generator ('img_size' only in adroit_relocate; default 84)
++        _pcg_kw = {'img_size': ENV_POINT_CLOUD_CONFIG[env_name]['img_size']} \
++            if 'img_size' in ENV_POINT_CLOUD_CONFIG[env_name] else {}
+         self.pc_generator = PointCloudGenerator(sim=env.get_mujoco_sim(),
+-                                                cam_names=ENV_POINT_CLOUD_CONFIG[env_name]['cam_names'])
++                                                cam_names=ENV_POINT_CLOUD_CONFIG[env_name]['cam_names'],
++                                                **_pcg_kw)
+         self.pc_transform = ENV_POINT_CLOUD_CONFIG[env_name].get('transform', None)
+         self.pc_scale = ENV_POINT_CLOUD_CONFIG[env_name].get('scale', None)
+         self.pc_offset = ENV_POINT_CLOUD_CONFIG[env_name].get('offset', None)
++        # adroit_relocate only (see there)
++        self.depth_opaque_sites = ENV_POINT_CLOUD_CONFIG[env_name].get('depth_opaque_sites', None)
++
+ 
+-    
+ 
+     def get_point_cloud(self, use_RGB=True):
+ 
+         # set save_img_dir to save images for debugging
+         # save_img_dir = "/home/yanjieze/projects/diffusion-for-dex/imgs"
+         save_img_dir = None
+-        point_cloud, depth = self.pc_generator.generateCroppedPointCloud(save_img_dir=save_img_dir) # (N, 6), xyz+rgb
+-        
++        if self.depth_opaque_sites:
++            # union of the normal depth pass and a pass with these sites opaque; alpha restored after
++            point_cloud, depth = self.pc_generator.generateCroppedPointCloud(save_img_dir=save_img_dir)
++            _m = self.pc_generator.sim.model
++            _sid = [_m.site_name2id(s) for s in self.depth_opaque_sites]
++            _alpha = _m.site_rgba[_sid, 3].copy()
++            _m.site_rgba[_sid, 3] = 1.0
++            try:
++                _pc_opaque, _ = self.pc_generator.generateCroppedPointCloud(save_img_dir=save_img_dir)
++            finally:
++                _m.site_rgba[_sid, 3] = _alpha
++            point_cloud = np.concatenate([point_cloud, _pc_opaque], axis=0)
++        else:
++            point_cloud, depth = self.pc_generator.generateCroppedPointCloud(save_img_dir=save_img_dir) # (N, 6), xyz+rgb
++
+         
+         
+         # do transform, scale, offset, and crop

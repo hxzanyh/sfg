@@ -1,0 +1,82 @@
+diff -ruN a/third_party/VRL3/src/gen_demonstration_expert.py b/third_party/VRL3/src/gen_demonstration_expert.py
+--- a/third_party/VRL3/src/gen_demonstration_expert.py
++++ b/third_party/VRL3/src/gen_demonstration_expert.py
+@@ -27,6 +27,10 @@
+     parser.add_argument('--img_size', type=int, default=84, help='image size')
+     parser.add_argument('--not_use_multi_view', action='store_true', help='not use multi view')
+     parser.add_argument('--use_point_crop', action='store_true', help='use point crop')
++    # 0 = stop at the env's own episode end (time limit, or the pen dropping). 100 (the original value)
++    # keeps stepping a finished pen episode (50 actions) up to 100 actions; door/relocate are 100 either way.
++    parser.add_argument('--min_episode_length', type=int, default=100,
++                        help='keep stepping until at least this many steps even past ts.last() (original: 100)')
+     args = parser.parse_args()
+     return args
+ 
+@@ -81,10 +85,14 @@
+     state_arrays = []
+     action_arrays = []
+     episode_ends_arrays = []
++    # per-step reward, goal counter and episode-end flag, aligned with the stored (obs, action)
++    reward_arrays = []
++    goal_arrays = []
++    terminal_arrays = []
+     
+ 
+     # loop over episodes
+-    minimal_episode_length = 100
++    minimal_episode_length = args.min_episode_length
+     episode_idx = 0
+     while episode_idx < num_episodes:
+         env = create_env()
+@@ -101,6 +109,8 @@
+         depth_arrays_sub = []
+         state_arrays_sub = []
+         action_arrays_sub = []
++        reward_arrays_sub = []
++        goal_arrays_sub = []
+         total_count_sub = 0
+         
+         while (not time_step.last()) or step_count < minimal_episode_length:
+@@ -132,6 +142,8 @@
+             obs = obs[:3] if obs.shape[0] > 3 else obs # (3,84,84)
+             n_goal_achieved_total += time_step.n_goal_achieved
+             total_reward += time_step.reward
++            reward_arrays_sub.append(np.float32(time_step.reward))
++            goal_arrays_sub.append(np.float32(time_step.n_goal_achieved))
+             step_count += 1
+             
+         if n_goal_achieved_total < 10.:
+@@ -144,6 +156,10 @@
+             depth_arrays.extend(deepcopy(depth_arrays_sub))
+             state_arrays.extend(deepcopy(state_arrays_sub))
+             action_arrays.extend(deepcopy(action_arrays_sub))
++            reward_arrays.extend(deepcopy(reward_arrays_sub))
++            goal_arrays.extend(deepcopy(goal_arrays_sub))
++            _t = np.zeros(len(reward_arrays_sub), dtype=np.float32); _t[-1] = 1.0
++            terminal_arrays.extend(_t.tolist())
+             print('Episode: {}, Reward: {}, Goal Achieved: {}'.format(episode_idx, total_reward, n_goal_achieved_total)) 
+             episode_idx += 1
+ 
+@@ -164,6 +180,9 @@
+     depth_arrays = np.stack(depth_arrays, axis=0)
+     action_arrays = np.stack(action_arrays, axis=0)
+     episode_ends_arrays = np.array(episode_ends_arrays)
++    reward_arrays = np.array(reward_arrays, dtype=np.float32)
++    goal_arrays = np.array(goal_arrays, dtype=np.float32)
++    terminal_arrays = np.array(terminal_arrays, dtype=np.float32)
+ 
+     compressor = zarr.Blosc(cname='zstd', clevel=3, shuffle=1)
+     img_chunk_size = (100, img_arrays.shape[1], img_arrays.shape[2], img_arrays.shape[3])
+@@ -176,8 +195,11 @@
+     zarr_data.create_dataset('point_cloud', data=point_cloud_arrays, chunks=point_cloud_chunk_size, dtype='float32', overwrite=True, compressor=compressor)
+     zarr_data.create_dataset('depth', data=depth_arrays, chunks=depth_chunk_size, dtype='float32', overwrite=True, compressor=compressor)
+     zarr_data.create_dataset('action', data=action_arrays, chunks=action_chunk_size, dtype='float32', overwrite=True, compressor=compressor)
++    zarr_data.create_dataset('reward', data=reward_arrays, chunks=(min(10000, len(reward_arrays)),), dtype='float32', overwrite=True, compressor=compressor)
++    zarr_data.create_dataset('n_goal_achieved', data=goal_arrays, chunks=(min(10000, len(goal_arrays)),), dtype='float32', overwrite=True, compressor=compressor)
++    zarr_data.create_dataset('terminal', data=terminal_arrays, chunks=(min(10000, len(terminal_arrays)),), dtype='float32', overwrite=True, compressor=compressor)
+     zarr_meta.create_dataset('episode_ends', data=episode_ends_arrays, dtype='int64', overwrite=True, compressor=compressor)
+-    
++
+     
+     # print shape
+     cprint(f'img shape: {img_arrays.shape}, range: [{np.min(img_arrays)}, {np.max(img_arrays)}]', 'green')
