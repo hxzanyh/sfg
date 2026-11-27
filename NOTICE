@@ -1,0 +1,23 @@
+This repository contains code derived from the following MIT-licensed projects.
+Their copyright notices are reproduced here as required by the MIT License
+(full license text: see LICENSE).
+
+OGPO — https://github.com/simchowitzlabpublic/OGPO_public
+  Basis of ogpo/, envs/, scripts/ and the build configuration.
+  Copyright (c) 2026 The OGPO authors
+
+Octo — https://github.com/octo-models/octo
+  pointcloud/sfg_pc/meanflow/octo_unet1d.py is a PyTorch port of Octo's ConditionalUnet1D.
+  Copyright (c) 2023 Robotic AI & Learning Lab Berkeley
+
+Diffusion Policy — https://github.com/real-stanford/diffusion_policy
+  Origin of the ConditionalUnet1D architecture used by Octo (above).
+  Copyright (c) 2023 Columbia Artificial Intelligence and Robotics Lab
+
+3D Diffusion Policy (DP3) — https://github.com/YanjieZe/3D-Diffusion-Policy
+  pointcloud/patches/*.patch apply to, and quote context lines from, this repository.
+  Copyright (c) 2024 Yanjie Ze
+
+VRL3 — https://github.com/microsoft/VRL3
+  pointcloud/patches/vrl3_demo_rewards.patch modifies a file under DP3's third_party/VRL3/.
+  Copyright (c) Microsoft Corporation.
