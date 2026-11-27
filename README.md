@@ -40,7 +40,8 @@ for s in 1 2 3 4; do bash scripts/sfg/train.sh <task> --seed=$s --gpu=0; done
 uv run python scripts/sfg/summarize.py exp/sfg_<task>_s*     # first-0.3M / last-200k / steps to 0.8
 ```
 
-Kitchen is scored as `tasks_completed / 4`.
+Kitchen is scored as `tasks_completed / 4`. The functional-step bound is δ = 0.01 by default
+(`sfg_func_delta` in `ogpo/configs/algos/sfg.yaml`).
 
 ## Multi-step version (Appendix G and D)
 
@@ -57,7 +58,7 @@ Append to `bash scripts/sfg/train.sh <task>`:
 | ablation | arguments |
 |---|---|
 | no bound | `--agent.sfg_func_delta=0` |
-| bound size | `--agent.sfg_func_delta=0.005` / `0.05` |
+| bound size (default δ = 0.01) | `--agent.sfg_func_delta=0.005` / `0.05` |
 | learning rate | `--agent.sfg_actor_lr=<lr>` |
 | without demonstration replay | `--buffer.offline_ratio=0` |
 | from a random initialisation | `--agent.sfg_allow_scratch=true --checkpoint.restore_actor_path=null` |
